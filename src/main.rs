@@ -1,7 +1,7 @@
 use csv::ReaderBuilder;
 use csv::WriterBuilder;
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs::File;
 
@@ -14,7 +14,7 @@ struct Record {
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Open the CSV file
-    let file_path = "/Users/hott/eng/f1-led-circuit-check-driver-count-per-timestamp/output_track_data_short_sample_consolidated_timestamps.csv";
+    let file_path = "/Users/hott/eng/f1-led-circuit-check-driver-count-per-timestamp/output_track_data_short_sample_consolidated_timestamps.csv"; // Update this to your file path
     let file = File::open(file_path)?;
     let mut rdr = ReaderBuilder::new().from_reader(file);
 
@@ -25,32 +25,29 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Write the header row
     wtr.write_record(&["timestamp", "driver_count", "duplicates"])?;
 
-    // Initialize a HashMap to store counts and a HashSet to check duplicates
-    let mut driver_map = std::collections::HashMap::new();
-    let mut driver_set = HashSet::new();
+    // Initialize a HashMap to store counts and a HashMap to check duplicates
+    let mut driver_map: HashMap<String, HashSet<u32>> = HashMap::new();
+    let mut duplicates_map: HashMap<String, bool> = HashMap::new();
 
     // Iterate through records
     for result in rdr.deserialize() {
         let record: Record = result?;
-        let timestamp = record.timestamp;
+        let timestamp = record.timestamp.clone();
 
-        // Count the drivers
-        let counter = driver_map.entry(timestamp.clone()).or_insert(0);
-        *counter += 1;
-
-        // Check for duplicates
-        let key = (timestamp.clone(), record.driver_number);
-        if !driver_set.insert(key) {
-            driver_map.insert(timestamp.clone(), -1); // Mark as duplicate if already present
+        // Count the drivers and check for duplicates
+        let drivers = driver_map.entry(timestamp.clone()).or_insert_with(HashSet::new);
+        if !drivers.insert(record.driver_number) {
+            duplicates_map.insert(timestamp.clone(), true); // Mark as duplicate if already present
         }
     }
 
     // Write the results to the output CSV
-    for (timestamp, count) in driver_map {
-        let duplicates = count == -1;
+    for (timestamp, drivers) in driver_map {
+        let driver_count = drivers.len();
+        let duplicates = duplicates_map.get(&timestamp).unwrap_or(&false);
         wtr.write_record(&[
             timestamp,
-            (if duplicates { "true" } else { "false" }).to_string(),
+            driver_count.to_string(),
             duplicates.to_string(),
         ])?;
     }
